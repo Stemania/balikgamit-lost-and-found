@@ -1,19 +1,26 @@
-// Front end: talks to the REST API with fetch() and renders the board.
-const form = document.querySelector('#item-form');
-const formErrors = document.querySelector('#form-errors');
-const submitBtn = document.querySelector('#submit-btn');
-const formCategory = document.querySelector('#form-category');
-const formDate = document.querySelector('#form-date');
-const locationList = document.querySelector('#location-list');
-const filterType = document.querySelector('#filter-type');
-const filterCategory = document.querySelector('#filter-category');
-const filterStatus = document.querySelector('#filter-status');
-const list = document.querySelector('#item-list');
-const boardMessage = document.querySelector('#board-message');
-const toast = document.querySelector('#toast');
+// BalikGamit front end: talks to the REST API with fetch() and renders the views.
+// All user text is inserted with textContent (never innerHTML) to prevent HTML injection.
 
-// --- helpers ---------------------------------------------------------------
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+// ---------------------------------------------------------------------------
+// Routes (sidebar links use #hash URLs)
+// ---------------------------------------------------------------------------
+const ROUTES = {
+  dashboard: { view: 'dashboard', crumb: 'Overview', title: 'Dashboard' },
+  all: { view: 'list', crumb: 'Reports', title: 'All open reports', preset: { type: '', status: 'Open' } },
+  lost: { view: 'list', crumb: 'Reports', title: 'Lost items', preset: { type: 'Lost', status: 'Open' } },
+  found: { view: 'list', crumb: 'Reports', title: 'Found items', preset: { type: 'Found', status: 'Open' } },
+  claimed: { view: 'list', crumb: 'Reports', title: 'Claimed items', preset: { type: '', status: 'Claimed' } },
+  api: { view: 'api', crumb: 'System', title: 'API & status' },
+};
+
+const state = { route: 'dashboard', type: '', status: 'Open', category: '', q: '', items: [], current: null };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
@@ -24,12 +31,33 @@ async function api(path, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-function el(tag, className, text) {
+function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text; // textContent = safe from HTML injection
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === 'class') node.className = value;
+    else if (key === 'text') node.textContent = value;
+    else if (key.startsWith('data-') || key.startsWith('aria-') || key === 'role' || key === 'tabindex' || key === 'type' || key === 'colspan') node.setAttribute(key, value);
+    else node[key] = value;
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
   return node;
 }
+
+function icon(name, extra = '') {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', `ic ${extra}`.trim());
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+const refCode = (id) => `BG-${String(id).slice(-6).toUpperCase()}`;
 
 function todayLocal() {
   const d = new Date();
@@ -37,198 +65,547 @@ function todayLocal() {
   return d.toISOString().slice(0, 10);
 }
 
-function formatDate(iso) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-}
+// dateOccurred is stored as midnight UTC of the chosen day, so format it in UTC.
+const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const fmtDateTime = (iso) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 function timeAgo(iso) {
-  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  const steps = [[60, 'second'], [60, 'minute'], [24, 'hour'], [30, 'day'], [12, 'month'], [Infinity, 'year']];
-  let value = seconds;
-  for (const [size, unit] of steps) {
-    if (value < size) {
-      const n = Math.floor(value);
-      return n <= 0 && unit === 'second' ? 'just now' : `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  const plural = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  const minutes = Math.max(0, (Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return plural(Math.floor(minutes), 'min');
+  const hours = minutes / 60;
+  if (hours < 24) return plural(Math.floor(hours), 'hr');
+  const days = hours / 24;
+  if (days < 30) return plural(Math.floor(days), 'day');
+  if (days < 365) return plural(Math.floor(days / 30), 'month');
+  return plural(Math.floor(days / 365), 'year');
+}
+
+function toast(message, kind = 'success') {
+  const node = el('div', { class: `toast ${kind}`, role: 'status' }, icon(kind === 'error' ? 'alert' : 'check'), el('span', { text: message }));
+  $('#toasts').append(node);
+  setTimeout(() => node.remove(), 4000);
+}
+
+const badge = (kind, text) => el('span', { class: `badge ${kind}`, text });
+const typeBadge = (type) => badge(type === 'Lost' ? 'lost' : 'found', type);
+const statusBadge = (status) => badge(status === 'Claimed' ? 'claimed' : 'open', status);
+
+// ---------------------------------------------------------------------------
+// Service status (sidebar + API page)
+// ---------------------------------------------------------------------------
+let lastHealth = null;
+
+async function checkHealth() {
+  const box = $('#sb-status');
+  const text = $('#sb-status-text');
+  const started = performance.now();
+  try {
+    const { ok, data } = await api('/api/health');
+    const ms = Math.round(performance.now() - started);
+    lastHealth = { ok, data, ms, at: new Date() };
+    if (ok && data.database === 'connected') {
+      box.dataset.state = 'ok'; text.textContent = 'All systems operational';
+    } else {
+      box.dataset.state = 'degraded'; text.textContent = 'Database connecting…';
     }
-    value /= size;
+  } catch {
+    lastHealth = { ok: false, data: null, ms: null, at: new Date() };
+    box.dataset.state = 'down'; text.textContent = 'Server unreachable';
   }
-  return '';
+  renderStatusList();
 }
 
-let toastTimer;
-function showToast(message) {
-  toast.textContent = message;
-  toast.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.hidden = true; }, 3500);
+function renderStatusList() {
+  const list = $('#status-list');
+  if (!list || !lastHealth) return;
+  const { ok, data, ms, at } = lastHealth;
+  const row = (label, value, stateName) => {
+    const dd = el('dd', stateName ? { 'data-state': stateName } : {});
+    if (stateName) dd.append(el('span', { class: 'dot' }));
+    dd.append(value);
+    return el('div', {}, el('dt', { text: label }), dd);
+  };
+  const dbOk = data && data.database === 'connected';
+  list.replaceChildren(
+    row('Web service (Render)', ok ? 'Online' : 'Unreachable', ok ? 'ok' : 'down'),
+    row('Database (MongoDB Atlas)', data ? data.database[0].toUpperCase() + data.database.slice(1) : 'Unknown', dbOk ? 'ok' : 'degraded'),
+    row('API response time', ms !== null ? `${ms} ms` : '–'),
+    row('Server uptime', data ? formatUptime(data.uptimeSeconds) : '–'),
+    row('Last checked', at.toLocaleTimeString()),
+  );
 }
 
-function showBoardMessage(text, isError = false) {
-  boardMessage.textContent = text;
-  boardMessage.classList.toggle('is-error', isError);
-  boardMessage.hidden = false;
+function formatUptime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${sec % 60}s`;
+  return `${sec}s`;
+}
+
+// ---------------------------------------------------------------------------
+// Stats (dashboard + sidebar counts)
+// ---------------------------------------------------------------------------
+async function loadStats() {
+  let res;
+  try { res = await api('/api/stats'); } catch { return; }
+  if (!res.ok || !res.data) return;
+  const s = res.data;
+
+  $$('[data-stat]').forEach((node) => { node.textContent = s[node.dataset.stat] ?? '–'; });
+  $$('[data-count]').forEach((node) => { node.textContent = s[node.dataset.count] || ''; });
+
+  const bars = $('#cat-bars');
+  if (!s.byCategory.length) {
+    bars.replaceChildren(el('li', { class: 'side-empty', text: 'No open reports yet.' }));
+  } else {
+    const max = Math.max(...s.byCategory.map((c) => c.count));
+    bars.replaceChildren(...s.byCategory.map((c) => {
+      const fill = el('div', { class: 'bar-fill' });
+      fill.style.width = `${Math.max(4, (c.count / max) * 100)}%`;
+      return el('li', { class: 'bar-row' }, el('span', { text: c.category }), el('strong', { text: c.count }), el('div', { class: 'bar-track' }, fill));
+    }));
+  }
+
+  const spots = $('#hotspots');
+  if (!s.topLocations.length) {
+    spots.replaceChildren(el('li', { class: 'side-empty', text: 'No locations yet.' }));
+    spots.classList.add('is-empty');
+  } else {
+    spots.classList.remove('is-empty');
+    spots.replaceChildren(...s.topLocations.map((l) => el('li', {}, el('span', { text: l.location }), el('strong', { text: `${l.count}` }))));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------
+function skeletonRows(tbody, cols, rows = 5) {
+  tbody.replaceChildren(...Array.from({ length: rows }, () =>
+    el('tr', { class: 'skeleton' }, ...Array.from({ length: cols }, (_, i) => {
+      const bar = el('span', { class: 'sk' });
+      bar.style.width = `${[70, 40, 55, 60, 45, 50, 20][i % 7]}%`;
+      return el('td', {}, bar);
+    }))));
+}
+
+function itemCell(item) {
+  return el('td', {}, el('div', { class: 'cell-item' },
+    el('strong', { text: item.itemName }),
+    el('small', { text: `${refCode(item.id)} · by ${item.reporterName}` })));
+}
+
+function clickableRow(item, cells) {
+  const tr = el('tr', { tabindex: '0', 'aria-label': `Open details for ${item.itemName}` }, ...cells);
+  tr.addEventListener('click', () => openDrawer(item));
+  tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrawer(item); } });
+  return tr;
+}
+
+async function loadRecent() {
+  const tbody = $('#recent-body');
+  skeletonRows(tbody, 5, 4);
+  let res;
+  try { res = await api('/api/items?limit=7'); } catch { res = { ok: false, data: null }; }
+  if (!res.ok) {
+    tbody.replaceChildren(el('tr', {}, el('td', { colspan: '5' }, emptyState('alert', 'Could not load reports', (res.data && res.data.error) || 'The server could not be reached.', true))));
+    return;
+  }
+  if (!res.data.items.length) {
+    const btn = el('button', { class: 'btn btn-primary btn-sm', type: 'button', text: 'Report the first item' });
+    btn.addEventListener('click', openReport);
+    tbody.replaceChildren(el('tr', {}, el('td', { colspan: '5' }, emptyState('inbox', 'No reports yet', 'Lost or found something? Post it here.', false, btn))));
+    return;
+  }
+  tbody.replaceChildren(...res.data.items.map((item) => clickableRow(item, [
+    itemCell(item),
+    el('td', {}, typeBadge(item.type)),
+    el('td', { class: 'col-loc cell-muted', text: item.location }),
+    el('td', { class: 'col-status' }, statusBadge(item.status)),
+    el('td', { class: 'col-when cell-muted', text: timeAgo(item.createdAt) }),
+  ])));
+}
+
+function emptyState(iconName, title, text, isError = false, action = null) {
+  return el('div', { class: `empty${isError ? ' is-error' : ''}` },
+    icon(iconName, 'ic-xl'), el('p', { class: 'empty-title', text: title }), el('p', { class: 'empty-text', text }), action);
+}
+
+let listRequest = 0;
+async function loadList() {
+  const requestId = ++listRequest;
+  const tbody = $('#items-body');
+  const empty = $('#list-empty');
+  empty.hidden = true;
+  skeletonRows(tbody, 7);
+  $('#result-count').textContent = 'Loading…';
+
+  const params = new URLSearchParams();
+  if (state.type) params.set('type', state.type);
+  if (state.status) params.set('status', state.status);
+  if (state.category) params.set('category', state.category);
+  if (state.q) params.set('q', state.q);
+
+  let res;
+  try { res = await api(`/api/items?${params}`); } catch { res = { ok: false, data: null }; }
+  if (requestId !== listRequest) return; // a newer request replaced this one
+
+  if (!res.ok) {
+    tbody.replaceChildren();
+    $('#result-count').textContent = '';
+    $('#list-empty-title').textContent = 'Could not load reports';
+    $('#list-empty-text').textContent = (res.data && res.data.error) || 'The server could not be reached. Try refreshing.';
+    empty.classList.add('is-error');
+    empty.hidden = false;
+    return;
+  }
+
+  state.items = res.data.items;
+  const n = state.items.length;
+  $('#result-count').textContent = `${n} ${n === 1 ? 'result' : 'results'}`;
+  if (!n) {
+    tbody.replaceChildren();
+    empty.classList.remove('is-error');
+    $('#list-empty-title').textContent = state.q ? `No results for “${state.q}”` : 'Nothing here yet';
+    $('#list-empty-text').textContent = state.q || state.category ? 'Try a different filter or search term.' : 'Reports that match this view will show up here.';
+    empty.hidden = false;
+    return;
+  }
+
+  tbody.replaceChildren(...state.items.map((item) => clickableRow(item, [
+    itemCell(item),
+    el('td', {}, typeBadge(item.type)),
+    el('td', { class: 'col-cat cell-muted', text: item.category }),
+    el('td', { class: 'col-loc cell-muted', text: item.location }),
+    el('td', { class: 'col-date cell-muted', text: fmtDay(item.dateOccurred) }),
+    el('td', { class: 'col-status' }, statusBadge(item.status)),
+    el('td', { class: 'col-go' }, icon('chevron')),
+  ])));
+}
+
+// ---------------------------------------------------------------------------
+// Routing / views
+// ---------------------------------------------------------------------------
+function syncToolbar() {
+  $$('#seg-type button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.type === state.type)));
+  $('#f-status').value = state.status;
+  $('#f-category').value = state.category;
+}
+
+function highlightNav() {
+  // Highlight the sidebar link whose preset matches the current filters.
+  let key = state.route;
+  if (ROUTES[key].view === 'list') {
+    key = Object.keys(ROUTES).find((k) => {
+      const p = ROUTES[k].preset;
+      return p && p.type === state.type && p.status === state.status;
+    }) || null;
+  }
+  $$('.sb-nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === key));
+}
+
+function route() {
+  const key = ROUTES[location.hash.slice(1)] ? location.hash.slice(1) : 'dashboard';
+  const r = ROUTES[key];
+  state.route = key;
+  $('#crumb').textContent = r.crumb;
+  $('#page-title').textContent = r.title;
+  document.title = `${r.title} · BalikGamit`;
+
+  $('#view-dashboard').hidden = r.view !== 'dashboard';
+  $('#view-list').hidden = r.view !== 'list';
+  $('#view-api').hidden = r.view !== 'api';
+
+  if (r.preset) {
+    state.type = r.preset.type;
+    state.status = r.preset.status;
+    state.category = '';
+    syncToolbar();
+    loadList();
+  } else if (r.view === 'dashboard') {
+    loadStats();
+    loadRecent();
+  } else if (r.view === 'api') {
+    checkHealth();
+  }
+  highlightNav();
+  closeSidebar();
+  window.scrollTo(0, 0);
+}
+
+function refreshAll() {
+  loadStats();
+  if (ROUTES[state.route].view === 'dashboard') loadRecent();
+  if (ROUTES[state.route].view === 'list') loadList();
+}
+
+// ---------------------------------------------------------------------------
+// Detail drawer
+// ---------------------------------------------------------------------------
+let lastFocus = null;
+
+function openDrawer(item) {
+  state.current = item;
+  lastFocus = document.activeElement;
+  renderDrawer();
+  $('#drawer').hidden = false;
+  $('#drawer-backdrop').hidden = false;
+  $('#drawer-close').focus();
+}
+
+function closeDrawer() {
+  if ($('#drawer').hidden) return;
+  $('#drawer').hidden = true;
+  $('#drawer-backdrop').hidden = true;
+  state.current = null;
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+}
+
+function detailRow(iconName, label, value) {
+  return el('div', {}, el('dt', {}, icon(iconName), label), el('dd', { text: value }));
+}
+
+function renderDrawer() {
+  const item = state.current;
+  if (!item) return;
+  const lost = item.type === 'Lost';
+  $('#drawer-ref').textContent = refCode(item.id);
+
+  const timeline = el('ol', { class: 'timeline' },
+    el('li', {}, el('strong', { text: `${lost ? 'Lost' : 'Found'} at ${item.location}` }), fmtDay(item.dateOccurred)),
+    el('li', {}, el('strong', { text: 'Reported on BalikGamit' }), `${fmtDateTime(item.createdAt)} · ${timeAgo(item.createdAt)}`));
+  if (item.status === 'Claimed' && item.claimedAt) {
+    timeline.append(el('li', { class: 'done' }, el('strong', { text: 'Claimed by owner' }), `${fmtDateTime(item.claimedAt)} · ${timeAgo(item.claimedAt)}`));
+  }
+
+  $('#drawer-body').replaceChildren(
+    el('div', { class: 'drawer-badges' }, typeBadge(item.type), statusBadge(item.status), badge('claimed plain', item.category)),
+    el('h2', { id: 'drawer-title', text: item.itemName }),
+    el('p', { class: `drawer-desc${item.description ? '' : ' none'}`, text: item.description || 'No description provided.' }),
+    el('dl', { class: 'detail-list' },
+      detailRow('tag', 'Category', item.category),
+      detailRow('pin', lost ? 'Last seen at' : 'Found at', item.location),
+      detailRow('calendar', lost ? 'Date lost' : 'Date found', fmtDay(item.dateOccurred)),
+      detailRow('user', 'Reported by', item.reporterName),
+      detailRow('message', 'Contact', item.contact)),
+    el('p', { class: 'section-title', text: 'Timeline' }),
+    timeline,
+  );
+  renderDrawerFoot();
+}
+
+function renderDrawerFoot(confirming = false) {
+  const item = state.current;
+  const foot = $('#drawer-foot');
+  if (item.status === 'Claimed') {
+    foot.replaceChildren(el('p', { class: 'claimed-note' }, icon('check'), 'This item has been returned to its owner.'));
+    return;
+  }
+  if (!confirming) {
+    const btn = el('button', { class: 'btn btn-success btn-block', type: 'button' }, icon('check'), 'Mark as claimed');
+    btn.addEventListener('click', () => renderDrawerFoot(true));
+    foot.replaceChildren(btn);
+    return;
+  }
+  const cancel = el('button', { class: 'btn btn-secondary', type: 'button', text: 'Cancel' });
+  const yes = el('button', { class: 'btn btn-success', type: 'button' }, icon('check'), 'Yes, it was claimed');
+  cancel.addEventListener('click', () => renderDrawerFoot(false));
+  yes.addEventListener('click', () => claimItem(item, [cancel, yes]));
+  foot.replaceChildren(el('div', { class: 'confirm-box' },
+    el('p', { text: `Confirm that “${item.itemName}” has been returned to its owner. This closes the report.` }),
+    el('div', { class: 'confirm-actions' }, cancel, yes)));
+  yes.focus();
+}
+
+async function claimItem(item, buttons) {
+  buttons.forEach((b) => { b.disabled = true; });
+  let res;
+  try { res = await api(`/api/items/${item.id}/claim`, { method: 'PATCH' }); } catch { res = { status: 0, data: null }; }
+  if (res.status === 200) {
+    toast(`${refCode(item.id)} “${item.itemName}” marked as claimed.`);
+    state.current = res.data.item;
+    renderDrawer();
+  } else if (res.status === 409 && res.data && res.data.item) {
+    toast('This item was already marked as claimed.', 'error');
+    state.current = res.data.item;
+    renderDrawer();
+  } else {
+    toast((res.data && res.data.error) || 'Could not update the item. Please try again.', 'error');
+    renderDrawerFoot(false);
+  }
+  refreshAll();
+}
+
+// ---------------------------------------------------------------------------
+// Report dialog
+// ---------------------------------------------------------------------------
+const dialog = $('#report-dialog');
+const form = $('#report-form');
+
+function updateTypeLabels() {
+  const found = form.elements.type.value === 'Found';
+  $('#date-label').textContent = found ? 'Date found *' : 'Date lost *';
+  $('#loc-label').textContent = found ? 'Where did you find it? *' : 'Where was it lost? *';
+}
+
+function openReport() {
+  form.reset();
+  $('#form-date').value = todayLocal();
+  $('#form-date').max = todayLocal();
+  $('#form-errors').hidden = true;
+  $$('[aria-invalid]', form).forEach((f) => f.removeAttribute('aria-invalid'));
+  updateTypeLabels();
+  closeSidebar();
+  dialog.showModal();
+  form.elements.itemName.focus();
 }
 
 function showFormErrors(title, details = []) {
-  formErrors.replaceChildren(el('strong', '', title));
-  if (details.length) {
-    const ul = el('ul');
-    details.forEach((d) => ul.append(el('li', '', d)));
-    formErrors.append(ul);
-  }
-  formErrors.hidden = false;
+  const box = $('#form-errors');
+  box.replaceChildren(el('strong', { text: title }));
+  if (details.length) box.append(el('ul', {}, ...details.map((d) => el('li', { text: d }))));
+  box.hidden = false;
+  box.scrollIntoView({ block: 'nearest' });
 }
 
-// --- options (categories, locations) ---------------------------------------
-
-async function loadOptions() {
-  const { ok, data } = await api('/api/options');
-  if (!ok || !data) return;
-  for (const cat of data.categories) {
-    formCategory.append(new Option(cat, cat));
-    filterCategory.append(new Option(cat, cat));
-  }
-  for (const loc of data.locations) locationList.append(new Option(loc));
-}
-
-// --- board -----------------------------------------------------------------
-
-function renderItem(item) {
-  const isClaimed = item.status === 'Claimed';
-  const li = el('li', `card ${isClaimed ? 'is-claimed' : item.type === 'Lost' ? 'is-lost' : 'is-found'}`);
-
-  const tags = el('div', 'tags');
-  tags.append(el('span', `tag ${item.type.toLowerCase()}`, item.type.toUpperCase()));
-  tags.append(el('span', 'tag', item.category));
-  if (isClaimed) tags.append(el('span', 'tag claimed', 'CLAIMED'));
-  li.append(tags);
-
-  li.append(el('h3', '', item.itemName));
-  const verb = item.type === 'Lost' ? 'Lost at' : 'Found at';
-  li.append(el('p', 'meta', `${verb} ${item.location} · ${formatDate(item.dateOccurred)}`));
-  if (item.description) li.append(el('p', 'desc', item.description));
-
-  const contact = el('p', 'contact');
-  contact.append(el('strong', '', 'Contact: '), document.createTextNode(`${item.reporterName} (${item.contact})`));
-  li.append(contact);
-
-  const foot = el('div', 'card-foot');
-  foot.append(el('small', '', isClaimed && item.claimedAt ? `Claimed ${timeAgo(item.claimedAt)}` : `Posted ${timeAgo(item.createdAt)}`));
-  if (!isClaimed) {
-    const btn = el('button', 'btn btn-ghost', 'Mark as claimed');
-    btn.type = 'button';
-    btn.dataset.action = 'ask';
-    btn.dataset.id = item.id;
-    foot.append(btn);
-  }
-  li.append(foot);
-  return li;
-}
-
-async function loadItems() {
-  const params = new URLSearchParams();
-  if (filterType.value) params.set('type', filterType.value);
-  if (filterCategory.value) params.set('category', filterCategory.value);
-  if (filterStatus.value) params.set('status', filterStatus.value);
-
-  showBoardMessage('Loading items…');
-  let result;
-  try {
-    result = await api(`/api/items?${params}`);
-  } catch {
-    list.replaceChildren();
-    return showBoardMessage('Cannot reach the server. Check your connection and refresh.', true);
-  }
-
-  const { ok, data } = result;
-  if (!ok) {
-    list.replaceChildren();
-    return showBoardMessage((data && data.error) || 'Could not load items.', true);
-  }
-
-  list.replaceChildren(...data.items.map(renderItem));
-  if (data.items.length === 0) showBoardMessage('No items match these filters yet.');
-  else boardMessage.hidden = true;
-}
-
-// --- events ----------------------------------------------------------------
+form.addEventListener('change', (e) => { if (e.target.name === 'type') updateTypeLabels(); });
+form.addEventListener('input', (e) => e.target.removeAttribute('aria-invalid'));
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  formErrors.hidden = true;
-  form.querySelectorAll('[aria-invalid]').forEach((f) => f.removeAttribute('aria-invalid'));
+  $('#form-errors').hidden = true;
 
-  const payload = Object.fromEntries(new FormData(form).entries());
-
-  // Quick browser-side check; the server re-checks everything (and has the final say).
-  const missing = [...form.querySelectorAll('[required]')].filter((f) => !f.value.trim());
+  // Quick browser-side check; the server validates everything again and has the final say.
+  const missing = $$('[required]', form).filter((f) => !String(f.value).trim());
+  $$('[aria-invalid]', form).forEach((f) => f.removeAttribute('aria-invalid'));
   if (missing.length) {
     missing.forEach((f) => f.setAttribute('aria-invalid', 'true'));
     missing[0].focus();
-    return showFormErrors('Please fill in the highlighted fields.');
+    showFormErrors('Please complete the highlighted fields.');
+    return;
   }
 
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Posting…';
+  const payload = Object.fromEntries(new FormData(form).entries());
+  const submit = $('#submit-btn');
+  submit.disabled = true;
+  submit.textContent = 'Submitting…';
   try {
     const { status, data } = await api('/api/items', { method: 'POST', body: JSON.stringify(payload) });
     if (status === 201) {
-      form.reset();
-      formDate.value = todayLocal();
-      showToast(`Posted "${data.item.itemName}" to the board.`);
-      filterStatus.value = 'Open';
-      await loadItems();
+      dialog.close();
+      toast(`${refCode(data.item.id)} “${data.item.itemName}” was posted.`);
+      const target = data.item.type === 'Lost' ? 'lost' : 'found';
+      if (location.hash === `#${target}`) refreshAll();
+      else location.hash = target;
+      loadStats();
+      openDrawer(data.item);
     } else if (status === 400) {
       showFormErrors('Please fix the following:', (data && data.details) || []);
     } else {
       showFormErrors((data && data.error) || `Something went wrong (HTTP ${status}).`);
     }
   } catch {
-    showFormErrors('Cannot reach the server. Please try again.');
+    showFormErrors('Cannot reach the server. Check your connection and try again.');
   } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Post to board';
+    submit.disabled = false;
+    submit.textContent = 'Submit report';
   }
 });
 
-// Two-step, on-page confirmation (browser confirm() popups can be blocked).
-list.addEventListener('click', async (event) => {
-  const btn = event.target.closest('button[data-action]');
-  if (!btn) return;
-  const foot = btn.closest('.card-foot');
-  const { action, id } = btn.dataset;
+$$('[data-close-report]').forEach((b) => b.addEventListener('click', () => dialog.close()));
+dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // click on backdrop
+$$('[data-open-report]').forEach((b) => b.addEventListener('click', openReport));
 
-  if (action === 'ask') {
-    const actions = el('div', 'confirm-actions');
-    const cancel = el('button', 'btn btn-ghost', 'Cancel');
-    cancel.type = 'button';
-    cancel.dataset.action = 'cancel';
-    const yes = el('button', 'btn btn-ghost btn-confirm', 'Yes, claimed');
-    yes.type = 'button';
-    yes.dataset.action = 'confirm';
-    yes.dataset.id = id;
-    actions.append(cancel, yes);
-    btn.replaceWith(actions);
-    yes.focus();
-  } else if (action === 'cancel') {
-    await loadItems();
-  } else if (action === 'confirm') {
-    foot.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    try {
-      const { status, data } = await api(`/api/items/${id}/claim`, { method: 'PATCH' });
-      if (status === 200) showToast(`"${data.item.itemName}" marked as claimed. Thanks for helping!`);
-      else showToast((data && data.error) || `Could not update item (HTTP ${status}).`);
-    } catch {
-      showToast('Cannot reach the server. Please try again.');
+// ---------------------------------------------------------------------------
+// API "Try it" console
+// ---------------------------------------------------------------------------
+async function tryRequest(method, path, body) {
+  const consoleBox = $('#console');
+  consoleBox.hidden = false;
+  $('#console-req').textContent = `${method} ${path}`;
+  $('#console-status').textContent = '…';
+  $('#console-body').textContent = '';
+  const started = performance.now();
+  try {
+    const { status, data } = await api(path, body ? { method, body: JSON.stringify(body) } : { method });
+    $('#console-status').textContent = `HTTP ${status} · ${Math.round(performance.now() - started)} ms`;
+    $('#console-body').textContent = JSON.stringify(data, null, 2);
+  } catch {
+    $('#console-status').textContent = 'Network error';
+  }
+}
+
+$$('[data-try]').forEach((b) => b.addEventListener('click', () => tryRequest('GET', b.dataset.try)));
+$$('[data-try-post]').forEach((b) => b.addEventListener('click', () =>
+  tryRequest('POST', '/api/items', { type: 'Lost', itemName: '', category: 'Not a category', dateOccurred: '2026-02-30' })));
+$('#status-refresh').addEventListener('click', checkHealth);
+
+// ---------------------------------------------------------------------------
+// Sidebar (mobile), search, filters, keyboard
+// ---------------------------------------------------------------------------
+function closeSidebar() {
+  $('#sidebar').classList.remove('open');
+  $('#sb-backdrop').hidden = true;
+}
+$('#menu-btn').addEventListener('click', () => {
+  $('#sidebar').classList.add('open');
+  $('#sb-backdrop').hidden = false;
+});
+$('#sb-backdrop').addEventListener('click', closeSidebar);
+
+let searchTimer;
+$('#search').addEventListener('input', (e) => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    state.q = e.target.value.trim();
+    if (ROUTES[state.route].view !== 'list') {
+      location.hash = 'all';
+    } else {
+      loadList();
     }
-    await loadItems();
-  }
+  }, 250);
 });
 
-[filterType, filterCategory, filterStatus].forEach((s) => s.addEventListener('change', loadItems));
+$('#seg-type').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-type]');
+  if (!b) return;
+  state.type = b.dataset.type;
+  syncToolbar(); highlightNav(); loadList();
+});
+$('#f-status').addEventListener('change', (e) => { state.status = e.target.value; highlightNav(); loadList(); });
+$('#f-category').addEventListener('change', (e) => { state.category = e.target.value; loadList(); });
+$('#refresh-btn').addEventListener('click', () => { loadList(); loadStats(); });
 
-// --- start -----------------------------------------------------------------
+$('#drawer-close').addEventListener('click', closeDrawer);
+$('#drawer-backdrop').addEventListener('click', closeDrawer);
 
-formDate.value = todayLocal();
-formDate.max = todayLocal();
-loadOptions().finally(loadItems);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeDrawer(); closeSidebar(); }
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (e.key === '/' && !typing && !dialog.open) { e.preventDefault(); $('#search').focus(); }
+});
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+async function loadOptions() {
+  try {
+    const { ok, data } = await api('/api/options');
+    if (!ok) return;
+    for (const cat of data.categories) {
+      $('#form-category').append(new Option(cat, cat));
+      $('#f-category').append(new Option(cat, cat));
+    }
+    for (const loc of data.locations) $('#location-list').append(new Option(loc));
+  } catch { /* the form still works with free text */ }
+}
+
+window.addEventListener('hashchange', route);
+loadOptions().finally(() => {
+  route();
+  loadStats();
+  checkHealth();
+  setInterval(checkHealth, 60000);
+});

@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const mongoose = require('mongoose');
 const itemsRouter = require('./routes/items');
+const statsRouter = require('./routes/stats');
 const { TYPES, STATUSES, CATEGORIES, LOCATIONS } = require('./models/Item');
 
 const app = express();
@@ -27,6 +28,7 @@ app.get('/api/options', (_req, res) => {
 });
 
 app.use('/api/items', itemsRouter);
+app.use('/api/stats', statsRouter);
 
 // Unknown API route -> 404 JSON
 app.use('/api', (req, res) => {

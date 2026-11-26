@@ -1,17 +1,15 @@
 // REST API routes for /api/items
-//   GET   /api/items              -> 200 list (optional filters: ?type=&category=&status=)
+//   GET   /api/items              -> 200 list (optional: ?type=&category=&status=&q=&limit=)
 //   POST  /api/items              -> 201 created | 400 validation errors
 //   PATCH /api/items/:id/claim    -> 200 claimed | 400 bad id | 404 not found | 409 already claimed
 const express = require('express');
-const mongoose = require('mongoose');
 const { Item, TYPES, STATUSES, CATEGORIES } = require('../models/Item');
 const { validateItem, matchOption } = require('../validateItem');
+const { dbReady, dbUnavailable } = require('../db');
 
 const router = express.Router();
 
-const dbReady = () => mongoose.connection.readyState === 1;
-const dbUnavailable = (res) =>
-  res.status(503).json({ error: 'Database is not connected yet. Please try again in a moment.' });
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // GET /api/items - read posts from the cloud database
 router.get('/', async (req, res) => {
@@ -27,10 +25,26 @@ router.get('/', async (req, res) => {
     else filter[field] = value;
   }
 
-  if (errors.length) return res.status(400).json({ error: 'Invalid filter.', details: errors });
+  // ?q= keyword search across name, description, location and category
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (q.length > 60) errors.push('q (search) must be at most 60 characters.');
+  else if (q) {
+    const rx = new RegExp(escapeRegex(q), 'i');
+    filter.$or = [{ itemName: rx }, { description: rx }, { location: rx }, { category: rx }];
+  }
+
+  // ?limit= how many results (1-200, default 200)
+  let limit = 200;
+  if (req.query.limit !== undefined) {
+    const n = Number(req.query.limit);
+    if (!Number.isInteger(n) || n < 1 || n > 200) errors.push('limit must be a whole number from 1 to 200.');
+    else limit = n;
+  }
+
+  if (errors.length) return res.status(400).json({ error: 'Invalid query.', details: errors });
   if (!dbReady()) return dbUnavailable(res);
 
-  const items = await Item.find(filter).sort({ createdAt: -1 }).limit(200);
+  const items = await Item.find(filter).sort({ createdAt: -1 }).limit(limit);
   return res.status(200).json({ count: items.length, items });
 });
 

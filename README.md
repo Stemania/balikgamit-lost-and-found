@@ -26,9 +26,10 @@ Browser (HTML/JS)  --HTTPS-->  Render PaaS: Node.js + Express  --TLS-->  MongoDB
 
 | Method | Route | Description | Success | Errors |
 |---|---|---|---|---|
-| `GET` | `/api/items` | List items, newest first. Optional filters: `?type=Lost\|Found`, `?category=...`, `?status=Open\|Claimed` | `200 OK` | `400` invalid filter |
+| `GET` | `/api/items` | List items, newest first. Optional: `?type=Lost\|Found`, `?category=...`, `?status=Open\|Claimed`, `?q=keyword`, `?limit=1-200` | `200 OK` | `400` invalid query |
 | `POST` | `/api/items` | Create an item from a JSON body | `201 Created` | `400` validation failed / malformed JSON |
 | `PATCH` | `/api/items/:id/claim` | Mark an item as claimed | `200 OK` | `400` invalid id, `404` not found, `409` already claimed |
+| `GET` | `/api/stats` | Dashboard numbers (MongoDB aggregation pipeline) | `200 OK` | - |
 | `GET` | `/api/health` | Server and database status | `200 OK` | - |
 | `GET` | `/api/options` | Categories and suggested locations for the form | `200 OK` | - |
 
@@ -74,7 +75,9 @@ If you get `querySrv ECONNREFUSED`, add `DNS_SERVERS=8.8.8.8,1.1.1.1` to `.env` 
 server.js              entry point: loads env, starts Express, connects to Atlas
 src/app.js             Express app, health/options routes, error handling
 src/routes/items.js    REST routes for /api/items
+src/routes/stats.js    GET /api/stats (dashboard aggregation)
+src/db.js              database-ready helpers (503 when Atlas is unreachable)
 src/models/Item.js     Mongoose schema + allowed categories/statuses
 src/validateItem.js    business rules for new posts (400 errors)
-public/                web page (index.html, style.css, app.js)
+public/                web app: dashboard, reports table, detail panel, report dialog, API & status page
 ```

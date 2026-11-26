@@ -13,6 +13,7 @@ const app = require('./src/app');
 
 const PORT = process.env.PORT || 3000; // Render provides PORT automatically
 const MONGODB_URI = process.env.MONGODB_URI;
+const DB_NAME = process.env.DB_NAME || 'lostfound'; // override only for testing
 
 app.listen(PORT, () => {
   console.log(`BalikGamit is running on http://localhost:${PORT}`);
@@ -22,7 +23,7 @@ if (!MONGODB_URI) {
   console.error('MONGODB_URI is not set. Add it to your .env file (local) or the Render Environment tab.');
 } else {
   mongoose
-    .connect(MONGODB_URI, { dbName: 'lostfound', serverSelectionTimeoutMS: 10000 })
-    .then(() => console.log('Connected to MongoDB Atlas (database: lostfound)'))
+    .connect(MONGODB_URI, { dbName: DB_NAME, serverSelectionTimeoutMS: 10000 })
+    .then(() => console.log(`Connected to MongoDB Atlas (database: ${DB_NAME})`))
     .catch((err) => console.error('Could not connect to MongoDB Atlas:', err.message));
 }
