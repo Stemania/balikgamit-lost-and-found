@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BalikGamit · Campus Lost &amp; Found</title>
+  <meta name="description" content="Post and find lost items around campus.">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">BG</span>
+        <div>
+          <h1>BalikGamit</h1>
+          <p>Campus Lost &amp; Found: helping lost things find their way back.</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap layout">
+    <section class="panel form-panel" aria-labelledby="report-title">
+      <h2 id="report-title">Report an item</h2>
+      <form id="item-form" novalidate>
+        <fieldset class="type-toggle">
+          <legend class="sr-only">Did you lose or find something?</legend>
+          <label><input type="radio" name="type" value="Lost" checked><span>I lost something</span></label>
+          <label><input type="radio" name="type" value="Found"><span>I found something</span></label>
+        </fieldset>
+
+        <label class="field">
+          <span>Item name</span>
+          <input name="itemName" maxlength="80" required placeholder="e.g. Black umbrella, school ID">
+        </label>
+
+        <div class="row">
+          <label class="field">
+            <span>Category</span>
+            <select name="category" id="form-category" required>
+              <option value="" disabled selected>Choose…</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Date</span>
+            <input type="date" name="dateOccurred" id="form-date" required>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Location</span>
+          <input name="location" list="location-list" maxlength="80" required placeholder="Where was it lost or found?">
+          <datalist id="location-list"></datalist>
+        </label>
+
+        <label class="field">
+          <span>Description <em>(optional)</em></span>
+          <textarea name="description" maxlength="500" rows="3" placeholder="Color, brand, stickers, what's inside…"></textarea>
+        </label>
+
+        <div class="row">
+          <label class="field">
+            <span>Your name</span>
+            <input name="reporterName" maxlength="60" required autocomplete="name">
+          </label>
+          <label class="field">
+            <span>How to reach you</span>
+            <input name="contact" maxlength="100" required placeholder="Messenger name or school email">
+          </label>
+        </div>
+
+        <p class="note">This board is public. Don't post phone numbers or home addresses.</p>
+        <div id="form-errors" class="form-errors" role="alert" hidden></div>
+        <button type="submit" class="btn btn-primary" id="submit-btn">Post to board</button>
+      </form>
+    </section>
+
+    <section class="board" aria-labelledby="board-title">
+      <div class="board-head">
+        <h2 id="board-title">Board</h2>
+        <div class="filters">
+          <select id="filter-type" aria-label="Filter by lost or found">
+            <option value="">Lost &amp; Found</option>
+            <option value="Lost">Lost only</option>
+            <option value="Found">Found only</option>
+          </select>
+          <select id="filter-category" aria-label="Filter by category">
+            <option value="">All categories</option>
+          </select>
+          <select id="filter-status" aria-label="Filter by status">
+            <option value="Open">Still open</option>
+            <option value="Claimed">Claimed</option>
+            <option value="">Any status</option>
+          </select>
+        </div>
+      </div>
+      <p id="board-message" class="board-message" hidden></p>
+      <ul id="item-list" class="item-list"></ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p><strong>API</strong>:
+        <code>GET /api/items</code> ·
+        <code>POST /api/items</code> ·
+        <code>PATCH /api/items/:id/claim</code> ·
+        <code>GET /api/health</code>
+      </p>
+      <p>IT 412 Platform Technologies · Deployed on Render (PaaS) with MongoDB Atlas</p>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

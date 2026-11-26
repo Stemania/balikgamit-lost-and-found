@@ -1,0 +1,10 @@
+# Dependencies (Render reinstalls these with `npm install`)
+node_modules/
+
+# Secrets - NEVER commit the real connection string
+.env
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
