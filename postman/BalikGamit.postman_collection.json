@@ -1,0 +1,162 @@
+{
+  "info": {
+    "name": "BalikGamit API (IT 412 Final)",
+    "description": "Tests for the BalikGamit Lost & Found REST API deployed on Render.\n\nRun the requests in order (1 to 10): request 3 saves the new item's id so requests 7 and 8 can use it.\nChange the `baseUrl` collection variable to http://localhost:3000 to test a local copy.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://balikgamit.onrender.com" },
+    { "key": "itemId", "value": "" },
+    { "key": "today", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Today's date (local) in YYYY-MM-DD, used by the POST request body.",
+          "const d = new Date();",
+          "const pad = (n) => String(n).padStart(2, '0');",
+          "pm.collectionVariables.set('today', `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health check (200 OK)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/health" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+        "pm.test('Database is connected', () => pm.expect(pm.response.json().database).to.eql('connected'));"
+      ] } }]
+    },
+    {
+      "name": "2. GET all items (200 OK)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/items" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+        "pm.test('Returns an items array with a count', () => {",
+        "  const body = pm.response.json();",
+        "  pm.expect(body.items).to.be.an('array');",
+        "  pm.expect(body.count).to.eql(body.items.length);",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "3. POST create item (201 Created)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/items",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"Found\",\n  \"itemName\": \"Blue water tumbler\",\n  \"category\": \"Tumblers & Lunchboxes\",\n  \"location\": \"Library\",\n  \"dateOccurred\": \"{{today}}\",\n  \"description\": \"Has a cat sticker near the lid. Posted from Postman.\",\n  \"reporterName\": \"Postman Test\",\n  \"contact\": \"postman.test@school.edu\"\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+        "const body = pm.response.json();",
+        "pm.test('Item was saved with an id and status Open', () => {",
+        "  pm.expect(body.item.id).to.be.a('string');",
+        "  pm.expect(body.item.status).to.eql('Open');",
+        "});",
+        "pm.collectionVariables.set('itemId', body.item.id); // used by requests 7 and 8"
+      ] } }]
+    },
+    {
+      "name": "4. POST missing fields (400 Bad Request)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/items",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"Lost\",\n  \"itemName\": \"\",\n  \"category\": \"Not a real category\",\n  \"dateOccurred\": \"2026-02-30\"\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+        "pm.test('Explains every problem in details[]', () => {",
+        "  const body = pm.response.json();",
+        "  pm.expect(body.error).to.eql('Validation failed.');",
+        "  pm.expect(body.details.length).to.be.above(1);",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "5. POST malformed JSON (400 Bad Request)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/items",
+        "body": { "mode": "raw", "raw": "{ \"type\": \"Lost\", \"itemName\": " }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+        "pm.test('Says the JSON is malformed', () => pm.expect(pm.response.json().error).to.include('Malformed JSON'));"
+      ] } }]
+    },
+    {
+      "name": "6. GET with filters and search (200 OK)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/items?type=Found&status=Open&q=tumbler",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "items"],
+          "query": [
+            { "key": "type", "value": "Found" },
+            { "key": "status", "value": "Open" },
+            { "key": "q", "value": "tumbler" }
+          ]
+        }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+        "pm.test('Every result matches the filters', () => {",
+        "  pm.response.json().items.forEach((i) => {",
+        "    pm.expect(i.type).to.eql('Found');",
+        "    pm.expect(i.status).to.eql('Open');",
+        "  });",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "7. PATCH claim item (200 OK)",
+      "request": { "method": "PATCH", "url": "{{baseUrl}}/api/items/{{itemId}}/claim" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+        "pm.test('Item is now Claimed', () => pm.expect(pm.response.json().item.status).to.eql('Claimed'));"
+      ] } }]
+    },
+    {
+      "name": "8. PATCH claim again (409 Conflict)",
+      "request": { "method": "PATCH", "url": "{{baseUrl}}/api/items/{{itemId}}/claim" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 409 Conflict', () => pm.response.to.have.status(409));"
+      ] } }]
+    },
+    {
+      "name": "9. PATCH unknown item (404 Not Found)",
+      "request": { "method": "PATCH", "url": "{{baseUrl}}/api/items/000000000000000000000000/claim" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 404 Not Found', () => pm.response.to.have.status(404));"
+      ] } }]
+    },
+    {
+      "name": "10. GET dashboard stats (200 OK)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/stats" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+        "pm.test('Totals add up', () => {",
+        "  const s = pm.response.json();",
+        "  pm.expect(s.open + s.claimed).to.eql(s.total);",
+        "});"
+      ] } }]
+    }
+  ]
+}

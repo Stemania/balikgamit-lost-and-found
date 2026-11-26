@@ -52,6 +52,11 @@ If the database is unreachable, item routes return `503 Service Unavailable`.
 
 Validation rules: `type`, `itemName`, `category`, `location`, `dateOccurred`, `reporterName` and `contact` are required; `category` must be one of the listed categories; the date must be a real `YYYY-MM-DD` date, not in the future and not older than one year; text fields have length limits.
 
+## Testing
+
+A Postman collection with 10 requests and automatic status-code tests is in [`postman/`](postman/).
+See [postman/README.md](postman/README.md) for how to import and run it.
+
 ## Run locally
 
 1. Install Node.js 20 or newer.
