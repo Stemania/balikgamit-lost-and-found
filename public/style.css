@@ -215,25 +215,28 @@ code, kbd, .mono { font-family: var(--mono); font-size: 0.88em; letter-spacing: 
 
 /* KPI cards: compact, no side stripe, solid circular icons */
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+/* Horizontal card: [icon] label / note ........ NUMBER */
 .kpi {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: baseline;
-  padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "icon label value" "icon sub value";
+  column-gap: 12px; row-gap: 1px; align-items: center;
+  padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet);
 }
-.kpi-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
+.kpi-head { display: contents; }
 .kpi-icon {
-  display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  grid-area: icon; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
   background: var(--open); color: #fff; flex: none;
 }
-.kpi-icon .ic { width: 12px; height: 12px; stroke-width: 2.25; }
+.kpi-icon .ic { width: 16px; height: 16px; stroke-width: 2; }
 .kpi-lost .kpi-icon { background: var(--lost); }
 .kpi-found .kpi-icon { background: var(--found); }
 .kpi-claimed .kpi-icon { background: var(--claimed); }
-.kpi-label { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.kpi-label { grid-area: label; align-self: end; font-size: 13px; font-weight: 500; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi-value {
-  margin-top: 6px; font-size: 24px; font-weight: 600; line-height: 1.1;
+  grid-area: value; justify-self: end; font-size: 28px; font-weight: 600; line-height: 1;
   letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
 }
-.kpi-sub { margin-top: 6px; font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kpi-sub { grid-area: sub; align-self: start; font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
 .dash-side { display: flex; flex-direction: column; gap: 16px; }
@@ -563,10 +566,11 @@ code, kbd, .mono { font-family: var(--mono); font-size: 0.88em; letter-spacing: 
   .toast { width: 100%; }
 }
 @media (max-width: 640px) {
-  .kpis { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .kpi { padding: 10px 12px; grid-template-columns: minmax(0, 1fr); }
-  .kpi-value { font-size: 22px; margin-top: 6px; }
-  .kpi-sub { margin-top: 2px; white-space: normal; }
+  .kpis { grid-template-columns: 1fr; gap: 8px; }
+  .kpi { padding: 10px 14px; }
+  .kpi-icon { width: 30px; height: 30px; }
+  .kpi-icon .ic { width: 14px; height: 14px; }
+  .kpi-value { font-size: 24px; }
   .dash-side { grid-template-columns: 1fr; }
   .col-loc, .col-when, .col-status, .col-go { display: none; }
   .cell-item { min-width: 0; max-width: 62vw; }
