@@ -36,6 +36,9 @@
       <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></symbol>
     </defs>
   </svg>
 
@@ -62,6 +65,9 @@
 
         <p class="sb-label">System</p>
         <a href="#api" data-route="api"><svg class="ic"><use href="#i-code"/></svg>API &amp; status</a>
+
+        <p class="sb-label">Help</p>
+        <a href="#guide" data-route="guide"><svg class="ic"><use href="#i-book"/></svg>Guide</a>
       </nav>
 
       <a class="sb-status" id="sb-status" href="#api" data-state="checking">
@@ -252,6 +258,97 @@
             <div class="console" id="console" hidden>
               <div class="console-head"><span id="console-req"></span><span id="console-status"></span></div>
               <pre id="console-body"></pre>
+            </div>
+          </section>
+        </section>
+
+        <!-- Guide view -->
+        <section class="view guide" id="view-guide" hidden aria-labelledby="page-title">
+          <section class="panel guide-hero">
+            <span class="guide-logo" aria-hidden="true"><svg class="ic"><use href="#i-tag"/></svg></span>
+            <div>
+              <h2>Welcome to BalikGamit</h2>
+              <p><strong>BalikGamit</strong> ("return the item") is the campus Lost &amp; Found board. Anyone who loses or finds something on campus can post it here, so the item can find its way back to its owner. Reports are public, searchable, and tracked from the moment they are posted until the item is returned.</p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head"><h2>How to use it</h2><span class="muted">5 steps</span></header>
+            <ol class="steps">
+              <li class="step">
+                <span class="step-num">1</span>
+                <div>
+                  <h3>Report a lost or found item</h3>
+                  <p>Click <strong>Report item</strong> at the top right. Choose <em>I lost something</em> or <em>I found something</em>, then fill in the item name, category, date, location and how to reach you, and click <strong>Submit report</strong>. Fields marked * are required; the form tells you exactly what is missing.</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" type="button" data-open-report>Report an item</button>
+              </li>
+              <li class="step">
+                <span class="step-num">2</span>
+                <div>
+                  <h3>Browse and search the board</h3>
+                  <p>Use the sidebar to open <strong>All open</strong>, <strong>Lost items</strong> or <strong>Found items</strong>. Narrow the list with the category and status filters, or press <kbd>/</kbd> and type a name, place or category to search.</p>
+                </div>
+                <a class="btn btn-secondary btn-sm" href="#found">Browse found items</a>
+              </li>
+              <li class="step">
+                <span class="step-num">3</span>
+                <div>
+                  <h3>Open an item's details</h3>
+                  <p>Click any row to open its detail panel. It shows the description, where and when the item was lost or found, who reported it and how to contact them, plus a timeline of the report.</p>
+                </div>
+                <a class="btn btn-secondary btn-sm" href="#all">Open the list</a>
+              </li>
+              <li class="step">
+                <span class="step-num">4</span>
+                <div>
+                  <h3>Mark it as claimed when it's returned</h3>
+                  <p>Once the owner has the item back, open its detail panel, click <strong>Mark as claimed</strong> and confirm. The report moves to <strong>Claimed</strong> and counts toward the return rate on the dashboard.</p>
+                </div>
+                <a class="btn btn-secondary btn-sm" href="#claimed">View claimed</a>
+              </li>
+              <li class="step">
+                <span class="step-num">5</span>
+                <div>
+                  <h3>Check the dashboard and system status</h3>
+                  <p>The <strong>Dashboard</strong> shows open, lost, found and returned counts, the most common categories and the top locations. <strong>API &amp; status</strong> shows whether the web server and the database are online.</p>
+                </div>
+                <a class="btn btn-secondary btn-sm" href="#dashboard">Go to dashboard</a>
+              </li>
+            </ol>
+          </section>
+
+          <div class="guide-grid">
+            <section class="panel">
+              <header class="panel-head"><h2>What the tags mean</h2></header>
+              <dl class="legend">
+                <div><dt><span class="badge lost">Lost</span></dt><dd>Someone lost this item and is looking for it.</dd></div>
+                <div><dt><span class="badge found">Found</span></dt><dd>Someone found this item and is waiting for the owner.</dd></div>
+                <div><dt><span class="badge open">Open</span></dt><dd>The report is active; the item has not been returned yet.</dd></div>
+                <div><dt><span class="badge claimed">Claimed</span></dt><dd>The item is back with its owner; the report is closed.</dd></div>
+              </dl>
+            </section>
+            <section class="panel">
+              <header class="panel-head"><h2>Good to know</h2></header>
+              <ul class="tips">
+                <li><svg class="ic"><use href="#i-tag"/></svg><span><strong>Be specific.</strong> Color, brand, stickers or what's inside help the owner recognize the item.</span></li>
+                <li><svg class="ic"><use href="#i-shield"/></svg><span><strong>Protect your privacy.</strong> Don't post phone numbers or home addresses; use a Messenger name or school email.</span></li>
+                <li><svg class="ic"><use href="#i-check"/></svg><span><strong>Claim only when returned.</strong> Mark an item as claimed after the owner actually has it back.</span></li>
+                <li><svg class="ic"><use href="#i-clock"/></svg><span><strong>First visit can be slow.</strong> The free hosting sleeps after about 15 minutes idle, so the first load may take up to a minute.</span></li>
+              </ul>
+            </section>
+          </div>
+
+          <section class="panel">
+            <header class="panel-head"><h2>About this project</h2><span class="muted">IT 412 Platform Technologies · Group 4</span></header>
+            <div class="about">
+              <p>BalikGamit was built as our final project for IT 412, a cloud web application deployed on a Platform as a Service. We chose a Lost &amp; Found system because:</p>
+              <ul>
+                <li><strong>It solves a real campus problem.</strong> Lost items usually end up scattered across offices, group chats and social media posts; one searchable board makes them easier to find.</li>
+                <li><strong>It naturally needs everything the project asks for.</strong> Users submit reports (user input), the server validates them and handles claiming (business logic), and every report is stored in a cloud database and shown back on the site.</li>
+                <li><strong>It maps cleanly to a REST API.</strong> <code>GET /api/items</code> lists reports, <code>POST /api/items</code> creates one, and <code>PATCH /api/items/:id/claim</code> closes one, with proper 200, 201 and 400 responses.</li>
+                <li><strong>It fits the free cloud tiers.</strong> It runs on Render (PaaS) and MongoDB Atlas at no cost, which shows how PaaS lets a small team focus on the app instead of the servers.</li>
+              </ul>
             </div>
           </section>
         </section>

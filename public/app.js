@@ -14,6 +14,7 @@ const ROUTES = {
   found: { view: 'list', crumb: 'Reports', title: 'Found items', preset: { type: 'Found', status: 'Open' } },
   claimed: { view: 'list', crumb: 'Reports', title: 'Claimed items', preset: { type: '', status: 'Claimed' } },
   api: { view: 'api', crumb: 'System', title: 'API & status' },
+  guide: { view: 'guide', crumb: 'Help', title: 'Guide' },
 };
 
 const state = { route: 'dashboard', type: '', status: 'Open', category: '', q: '', items: [], current: null };
@@ -530,9 +531,7 @@ function route() {
   $('#page-title').textContent = r.title;
   document.title = `${r.title} · BalikGamit`;
 
-  $('#view-dashboard').hidden = r.view !== 'dashboard';
-  $('#view-list').hidden = r.view !== 'list';
-  $('#view-api').hidden = r.view !== 'api';
+  $$('.view').forEach((v) => { v.hidden = v.id !== `view-${r.view}`; });
 
   if (r.preset) {
     state.type = r.preset.type;

@@ -416,6 +416,54 @@ code, kbd, .mono { font-family: var(--mono); font-size: 0.88em; letter-spacing: 
   color: #e4e4e7; font: 12px/1.6 var(--mono);
 }
 
+/* ==========================================================================
+   Guide view
+   ========================================================================== */
+.guide-hero { display: flex; align-items: flex-start; gap: 16px; padding: 20px; }
+.guide-logo {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 50%;
+  background: var(--brand); color: var(--brand-ink); box-shadow: inset 0 0 0 1px rgba(58, 42, 0, 0.12);
+}
+.guide-logo .ic { width: 20px; height: 20px; stroke-width: 2; }
+.guide-hero h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+.guide-hero p { margin-top: 4px; max-width: 760px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+.guide-hero strong { color: var(--ink); font-weight: 600; }
+
+.steps { list-style: none; margin: 0; padding: 0; }
+.step {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: start;
+  padding: 14px 16px;
+}
+.step + .step { border-top: 1px solid var(--line); }
+.step-num {
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--ink); color: #fff; font: 500 12px var(--mono);
+}
+.step h3 { font-size: 13.5px; font-weight: 600; line-height: 26px; letter-spacing: -0.01em; }
+.step p { font-size: 13px; color: var(--muted); line-height: 1.6; max-width: 720px; }
+.step p strong, .step p em { color: var(--ink-2); }
+.step kbd {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 4px;
+  background: var(--sheet); box-shadow: var(--shadow-sm); font-size: 11px; color: var(--ink-2);
+}
+.step .btn { margin-top: 1px; }
+
+.guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.legend { margin: 0; padding: 6px 0; }
+.legend div { display: grid; grid-template-columns: 76px 1fr; gap: 12px; align-items: center; padding: 8px 16px; font-size: 13px; }
+.legend div + div { border-top: 1px solid var(--line); }
+.legend dd { margin: 0; color: var(--muted); }
+.tips { list-style: none; margin: 0; padding: 6px 0; }
+.tips li { display: flex; gap: 10px; padding: 9px 16px; font-size: 13px; color: var(--muted); line-height: 1.55; }
+.tips li + li { border-top: 1px solid var(--line); }
+.tips .ic { margin-top: 2px; color: var(--ink-2); }
+.tips strong { color: var(--ink); font-weight: 600; }
+.about { padding: 14px 16px 16px; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.about ul { margin: 8px 0 0; padding-left: 18px; }
+.about li { margin-top: 6px; }
+.about li::marker { color: var(--faint); }
+.about strong { color: var(--ink); font-weight: 600; }
+
 /* ---------- Footer ---------- */
 .app-footer {
   display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px;
@@ -560,7 +608,9 @@ code, kbd, .mono { font-family: var(--mono); font-size: 0.88em; letter-spacing: 
   .tb-search { order: 5; width: 100%; }
   .content { padding: 14px; }
   .app-footer { padding: 12px 14px 18px; }
-  .api-grid { grid-template-columns: 1fr; }
+  .api-grid, .guide-grid { grid-template-columns: 1fr; }
+  .step { grid-template-columns: auto minmax(0, 1fr); }
+  .step .btn { grid-column: 2; justify-self: start; }
   .col-cat, .col-date { display: none; }
   .toasts { left: 14px; right: 14px; bottom: 14px; }
   .toast { width: 100%; }
