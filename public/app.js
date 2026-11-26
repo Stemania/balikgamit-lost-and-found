@@ -194,7 +194,7 @@ function skeletonRows(tbody, cols, rows = 5) {
 function itemCell(item) {
   return el('td', {}, el('div', { class: 'cell-item' },
     el('strong', { text: item.itemName }),
-    el('small', { text: `${refCode(item.id)} · by ${item.reporterName}` })));
+    el('small', {}, el('span', { class: 'mono', text: refCode(item.id) }), el('span', { text: `by ${item.reporterName}` }))));
 }
 
 function clickableRow(item, cells) {
@@ -286,12 +286,135 @@ async function loadList() {
 }
 
 // ---------------------------------------------------------------------------
+// Custom dropdown: styles the option list (native <select> lists can't be styled).
+// The real <select> stays in the DOM, hidden, as the source of truth, so forms,
+// FormData and 'change' listeners keep working unchanged.
+// ---------------------------------------------------------------------------
+const customSelects = new Map();
+let openSelect = null;
+
+function enhanceSelect(select) {
+  if (customSelects.has(select)) return customSelects.get(select).render();
+  const wrap = el('div', { class: 'select' });
+  select.before(wrap);
+  const label = select.getAttribute('aria-label') || (select.closest('label')?.querySelector('span')?.textContent || '').replace('*', '').trim();
+  const valueText = el('span', { class: 'select-value' });
+  const trigger = el('button', { class: 'select-trigger', type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': label }, valueText, icon('chevron-down'));
+  const menuId = `menu-${select.id}`;
+  const menu = el('div', { class: 'select-menu', role: 'listbox', id: menuId, hidden: true, 'aria-label': label });
+  trigger.setAttribute('aria-controls', menuId);
+  select.classList.add('select-native');
+  select.tabIndex = -1;
+  wrap.append(trigger, select, menu); // trigger first, so clicking a <label> opens it
+
+  let active = -1;
+  const options = () => [...select.options].filter((o) => !o.disabled);
+
+  function render() {
+    const current = select.selectedOptions[0];
+    const placeholder = !current || (current.disabled && current.value === '');
+    valueText.textContent = current ? current.textContent : '';
+    valueText.classList.toggle('is-placeholder', placeholder);
+    menu.replaceChildren(...options().map((o, i) => {
+      const item = el('div', { class: 'select-option', role: 'option', id: `${menuId}-${i}`, 'aria-selected': String(o.selected && !placeholder), 'data-index': String(i) },
+        el('span', { text: o.textContent }), icon('check'));
+      item.addEventListener('pointermove', () => setActive(i));
+      item.addEventListener('click', (e) => { e.preventDefault(); choose(i); });
+      return item;
+    }));
+  }
+
+  function setActive(i) {
+    const items = [...menu.children];
+    if (!items.length) return;
+    active = Math.max(0, Math.min(items.length - 1, i));
+    items.forEach((n, k) => n.classList.toggle('is-active', k === active));
+    trigger.setAttribute('aria-activedescendant', items[active].id);
+    items[active].scrollIntoView({ block: 'nearest' });
+  }
+
+  function position() {
+    const r = trigger.getBoundingClientRect();
+    menu.style.minWidth = `${Math.max(r.width, 180)}px`;
+    menu.style.left = `${Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)}px`;
+    const below = window.innerHeight - r.bottom;
+    const h = menu.offsetHeight;
+    menu.style.top = below < h + 12 && r.top > below ? `${r.top - h - 6}px` : `${r.bottom + 6}px`;
+  }
+
+  function open() {
+    if (openSelect && openSelect !== api) openSelect.close();
+    render();
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    position();
+    setActive(Math.max(0, options().findIndex((o) => o.selected)));
+    openSelect = api;
+  }
+
+  function close(focus = false) {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.removeAttribute('aria-activedescendant');
+    if (openSelect === api) openSelect = null;
+    if (focus) trigger.focus();
+  }
+
+  function choose(i) {
+    const opt = options().at(i);
+    if (!opt) return;
+    const changed = select.value !== opt.value;
+    select.value = opt.value;
+    select.removeAttribute('aria-invalid');
+    render();
+    close(true);
+    if (changed) {
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
+  trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
+  menu.addEventListener('click', (e) => e.preventDefault()); // a click in the menu must not re-trigger the <label>
+  trigger.addEventListener('keydown', (e) => {
+    const isOpen = !menu.hidden;
+    if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key) && !isOpen) { e.preventDefault(); open(); return; }
+    if (!isOpen) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); setActive(0); }
+    else if (e.key === 'End') { e.preventDefault(); setActive(menu.children.length - 1); }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(active); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); } // don't close the dialog/drawer too
+    else if (e.key === 'Tab') close();
+  });
+
+  const api = { render, close, trigger, wrap, menu };
+  customSelects.set(select, api);
+  render();
+  return api;
+}
+
+const syncSelect = (select) => customSelects.get(select)?.render();
+
+document.addEventListener('pointerdown', (e) => {
+  if (openSelect && !openSelect.wrap.contains(e.target)) openSelect.close();
+}, true);
+window.addEventListener('resize', () => openSelect?.close());
+document.addEventListener('scroll', (e) => {
+  if (openSelect && !openSelect.menu.contains(e.target)) openSelect.close();
+}, true);
+
+// ---------------------------------------------------------------------------
 // Routing / views
 // ---------------------------------------------------------------------------
 function syncToolbar() {
   $$('#seg-type button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.type === state.type)));
   $('#f-status').value = state.status;
   $('#f-category').value = state.category;
+  syncSelect($('#f-status'));
+  syncSelect($('#f-category'));
 }
 
 function highlightNav() {
@@ -381,7 +504,7 @@ function renderDrawer() {
   }
 
   $('#drawer-body').replaceChildren(
-    el('div', { class: 'drawer-badges' }, typeBadge(item.type), statusBadge(item.status), badge('claimed plain', item.category)),
+    el('div', { class: 'drawer-badges' }, typeBadge(item.type), statusBadge(item.status), badge('neutral', item.category)),
     el('h2', { id: 'drawer-title', text: item.itemName }),
     el('p', { class: `drawer-desc${item.description ? '' : ' none'}`, text: item.description || 'No description provided.' }),
     el('dl', { class: 'detail-list' },
@@ -452,6 +575,7 @@ function updateTypeLabels() {
 
 function openReport() {
   form.reset();
+  syncSelect($('#form-category'));
   $('#form-date').value = todayLocal();
   $('#form-date').max = todayLocal();
   $('#form-errors').hidden = true;
@@ -471,6 +595,7 @@ function showFormErrors(title, details = []) {
 }
 
 form.addEventListener('change', (e) => { if (e.target.name === 'type') updateTypeLabels(); });
+form.addEventListener('reset', () => setTimeout(() => syncSelect($('#form-category')))); // keep the custom dropdown in step
 form.addEventListener('input', (e) => e.target.removeAttribute('aria-invalid'));
 
 form.addEventListener('submit', async (event) => {
@@ -482,7 +607,7 @@ form.addEventListener('submit', async (event) => {
   $$('[aria-invalid]', form).forEach((f) => f.removeAttribute('aria-invalid'));
   if (missing.length) {
     missing.forEach((f) => f.setAttribute('aria-invalid', 'true'));
-    missing[0].focus();
+    (customSelects.get(missing[0])?.trigger || missing[0]).focus();
     showFormErrors('Please complete the highlighted fields.');
     return;
   }
@@ -600,6 +725,7 @@ async function loadOptions() {
     }
     for (const loc of data.locations) $('#location-list').append(new Option(loc));
   } catch { /* the form still works with free text */ }
+  ['#f-category', '#f-status', '#form-category'].forEach((sel) => enhanceSelect($(sel)));
 }
 
 window.addEventListener('hashchange', route);
