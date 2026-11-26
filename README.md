@@ -11,7 +11,8 @@ Built for **IT 412 Platform Technologies: Cloud PaaS Web App & Basic API Project
 | Database | MongoDB Atlas (M0 free cluster) | Managed database (DBaaS) |
 | Front end | HTML, CSS, vanilla JavaScript (served by Express) | - |
 
-**Live app:** _add your `https://<name>.onrender.com` URL here_
+**Live app:** https://balikgamit.onrender.com
+(free tier: the first visit after ~15 minutes of inactivity can take up to a minute while the service wakes up)
 
 ## Architecture
 
