@@ -398,6 +398,99 @@ function enhanceSelect(select) {
 
 const syncSelect = (select) => customSelects.get(select)?.render();
 
+// ---------------------------------------------------------------------------
+// Autocomplete for free-text fields (replaces the browser's unstyled <datalist>):
+// suggestions filter as you type, but any value can still be entered.
+// ---------------------------------------------------------------------------
+function enhanceCombo(input, suggestions) {
+  const wrap = el('div', { class: 'combo' });
+  input.before(wrap);
+  const menuId = `menu-${input.id}`;
+  const menu = el('div', { class: 'select-menu', role: 'listbox', id: menuId, hidden: true });
+  const chevron = icon('chevron-down', 'combo-chevron');
+  wrap.append(input, chevron, menu);
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+  input.setAttribute('aria-controls', menuId);
+
+  let matches = [];
+  let active = -1;
+
+  function setActive(i) {
+    const items = [...menu.children];
+    if (!items.length) return;
+    active = (i + items.length) % items.length;
+    items.forEach((n, k) => n.classList.toggle('is-active', k === active));
+    input.setAttribute('aria-activedescendant', items[active].id);
+    items[active].scrollIntoView({ block: 'nearest' });
+  }
+
+  function position() {
+    const r = input.getBoundingClientRect();
+    menu.style.minWidth = `${r.width}px`;
+    menu.style.left = `${r.left}px`;
+    const below = window.innerHeight - r.bottom;
+    const h = menu.offsetHeight;
+    menu.style.top = below < h + 12 && r.top > below ? `${r.top - h - 6}px` : `${r.bottom + 6}px`;
+  }
+
+  function open() {
+    const q = input.value.trim().toLowerCase();
+    matches = suggestions.filter((s) => s.toLowerCase().includes(q));
+    if (!matches.length) return close();
+    menu.replaceChildren(...matches.map((s, i) => {
+      const item = el('div', { class: 'select-option', role: 'option', id: `${menuId}-${i}`, 'aria-selected': String(s === input.value) },
+        el('span', { text: s }), icon('check'));
+      item.addEventListener('pointerdown', (e) => e.preventDefault()); // keep focus in the input
+      item.addEventListener('pointermove', () => setActive(i));
+      item.addEventListener('click', (e) => { e.preventDefault(); choose(i); });
+      return item;
+    }));
+    if (openSelect && openSelect !== api) openSelect.close();
+    menu.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    wrap.classList.add('is-open');
+    position();
+    active = -1;
+    openSelect = api;
+  }
+
+  function close() {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    wrap.classList.remove('is-open');
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    if (openSelect === api) openSelect = null;
+  }
+
+  function choose(i) {
+    const value = matches.at(i);
+    if (value === undefined) return;
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    close();
+  }
+
+  input.addEventListener('focus', open);
+  input.addEventListener('click', () => { if (menu.hidden) open(); });
+  input.addEventListener('input', (e) => { if (e.isTrusted) open(); });
+  input.addEventListener('blur', () => setTimeout(close, 100));
+  input.addEventListener('keydown', (e) => {
+    const isOpen = !menu.hidden;
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!isOpen) open(); else setActive(active + 1); }
+    else if (e.key === 'ArrowUp' && isOpen) { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Enter' && isOpen && active >= 0) { e.preventDefault(); choose(active); }
+    else if (e.key === 'Escape' && isOpen) { e.preventDefault(); e.stopPropagation(); close(); } // don't close the dialog too
+    else if (e.key === 'Tab') close();
+  });
+  menu.addEventListener('click', (e) => e.preventDefault());
+
+  const api = { close, wrap, menu };
+  return api;
+}
+
 document.addEventListener('pointerdown', (e) => {
   if (openSelect && !openSelect.wrap.contains(e.target)) openSelect.close();
 }, true);
@@ -723,7 +816,7 @@ async function loadOptions() {
       $('#form-category').append(new Option(cat, cat));
       $('#f-category').append(new Option(cat, cat));
     }
-    for (const loc of data.locations) $('#location-list').append(new Option(loc));
+    enhanceCombo($('#form-location'), data.locations);
   } catch { /* the form still works with free text */ }
   ['#f-category', '#f-status', '#form-category'].forEach((sel) => enhanceSelect($(sel)));
 }
